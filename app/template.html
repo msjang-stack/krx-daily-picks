@@ -204,6 +204,31 @@
     letter-spacing: -0.024em;
     text-wrap: balance;
   }
+  .datebar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 14px;
+  }
+  .datebar-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-3);
+  }
+  .datebar select {
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 650;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--rule-2);
+    border-radius: 8px;
+    padding: 6px 10px;
+  }
+  .datebar select:focus-visible {
+    outline: 2px solid var(--ink-2);
+    outline-offset: 1px;
+  }
   .sample-flag {
     display: inline-flex;
     align-items: center;
@@ -634,6 +659,10 @@
   <header class="masthead">
     <span class="eyebrow" id="eyebrow"></span>
     <h1 id="headline"></h1>
+    <div class="datebar">
+      <label for="dateSelect" class="datebar-label">날짜</label>
+      <select id="dateSelect"><option value="">오늘</option></select>
+    </div>
   </header>
 
   <!-- 1. 지수 -->
@@ -1334,5 +1363,32 @@
   renderNews();
   renderRows();
   renderWatch();
+
+  /* ===== 날짜 선택 =====
+     아카이브 목록은 페이지가 만들어진 시점이 아니라 여는 시점에 받아오므로,
+     오래전에 생성된 과거 날짜 페이지에서도 그 뒤에 쌓인 최신 날짜까지 골라볼 수 있습니다. */
+  (function () {
+    var sel = document.getElementById("dateSelect");
+    if (!sel) return;
+    fetch("/archive/manifest.json")
+      .then(function (r) { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
+      .then(function (list) {
+        if (!list || !list.length) return;
+        sel.innerHTML = "";
+        list.forEach(function (d) {
+          var opt = document.createElement("option");
+          opt.value = d.iso;
+          opt.textContent = d.iso === D.dateISO ? d.label + " · 오늘" : d.label;
+          if (d.iso === D.dateISO) opt.selected = true;
+          sel.appendChild(opt);
+        });
+      })
+      .catch(function () { /* 아카이브가 아직 없으면 '오늘' 하나만 남습니다 */ });
+    sel.addEventListener("change", function () {
+      var v = sel.value;
+      if (!v || v === D.dateISO) { location.href = "/"; return; }
+      location.href = "/archive/" + v + "/";
+    });
+  })();
 })();
 </script>

@@ -34,6 +34,9 @@ MIN_MARKET_CAP = _int("MIN_MARKET_CAP", 50_000_000_000)
 # '내일 주목할 종목'의 거래대금 하한. 너무 얇은 종목은 신호가 나와도 사고팔기 어렵습니다.
 MIN_WATCH_VALUE = _int("MIN_WATCH_VALUE", 30_000_000_000)   # 300억원
 
+# 날짜별 페이지를 며칠치 보관할지. dist/archive/{날짜}/ 로 쌓이며 Actions 캐시에 보관됩니다.
+ARCHIVE_DAYS = _int("ARCHIVE_DAYS", 30)
+
 UA = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                   "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",

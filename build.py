@@ -4,6 +4,7 @@
 
 import json
 import os
+import shutil
 import sys
 import time
 import traceback
@@ -219,6 +220,7 @@ def main():
         dt = datetime.strptime(trade_day, "%Y%m%d")
     else:
         dt = now
+    date_iso = dt.strftime("%Y-%m-%d")
 
     # 차트는 종목별 파일로 나눕니다. 첫 화면에 바로 보이는 종목만 페이지에 담고,
     # 검색으로 찾아 들어가는 종목은 누를 때 그 종목 파일 하나만 받아옵니다.
@@ -239,6 +241,7 @@ def main():
 
     data = {
         "chartDir": "charts/",
+        "dateISO": date_iso,
         "dateLabel": f"{dt.year}년 {dt.month}월 {dt.day}일",
         "weekday": WEEKDAY[dt.weekday()],
         "closeNote": "15:30 종가 기준",
@@ -274,8 +277,59 @@ def main():
     kb = os.path.getsize(out) / 1024
     print(f"[완료] {out} ({kb:,.0f} KB) · {time.time() - started:.0f}초 소요")
 
+    n_days = sync_archive(date_iso, dt)
+    print(f"[아카이브] {date_iso} 저장 (보관 중 {n_days}일치)")
+
     print_summary(data, by_value, by_gain)
     return 0
+
+
+def sync_archive(date_iso: str, dt: datetime) -> int:
+    """
+    오늘자 dist/ 전체(페이지+차트)를 날짜별로 보관합니다.
+    아카이브 본체는 cache/archive/ 에 두어 Actions 캐시로 매일 이어지고,
+    이번 실행의 dist/archive/ 에는 전체 보관분을 복사해 그대로 배포합니다.
+    """
+    archive_root = os.path.join(config.CACHE_DIR, "archive")
+    os.makedirs(archive_root, exist_ok=True)
+
+    today_dir = os.path.join(archive_root, date_iso)
+    if os.path.exists(today_dir):
+        shutil.rmtree(today_dir)
+    shutil.copytree(config.OUT_DIR, today_dir)
+
+    cutoff = dt - timedelta(days=config.ARCHIVE_DAYS)
+    for name in os.listdir(archive_root):
+        path = os.path.join(archive_root, name)
+        if not os.path.isdir(path):
+            continue
+        try:
+            d = datetime.strptime(name, "%Y-%m-%d")
+        except ValueError:
+            continue
+        if d < cutoff:
+            shutil.rmtree(path)
+            print(f"[아카이브] {name} 삭제 (보관기간 {config.ARCHIVE_DAYS}일 초과)")
+
+    dates = sorted(
+        (n for n in os.listdir(archive_root) if os.path.isdir(os.path.join(archive_root, n))),
+        reverse=True,
+    )
+    manifest = []
+    for d in dates:
+        dt_d = datetime.strptime(d, "%Y-%m-%d")
+        manifest.append({
+            "iso": d,
+            "label": f"{dt_d.month}월 {dt_d.day}일 ({WEEKDAY[dt_d.weekday()][0]})",
+        })
+    with open(os.path.join(archive_root, "manifest.json"), "w", encoding="utf-8") as f:
+        json.dump(manifest, f, ensure_ascii=False)
+
+    dist_archive = os.path.join(config.OUT_DIR, "archive")
+    if os.path.exists(dist_archive):
+        shutil.rmtree(dist_archive)
+    shutil.copytree(archive_root, dist_archive)
+    return len(dates)
 
 
 def print_summary(data, by_value, by_gain):
