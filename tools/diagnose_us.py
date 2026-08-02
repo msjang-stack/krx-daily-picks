@@ -100,11 +100,51 @@ def google_news_en():
     return len(items) > 0, f"기사 {len(items)}건"
 
 
+# ---------- 6. 지수 차트 (S&P500 / 나스닥 / 다우) ----------
+def yahoo_index_chart():
+    ok_all = True
+    for sym, name in [("%5EGSPC", "S&P500"), ("%5EIXIC", "나스닥종합"), ("%5EDJI", "다우존스")]:
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{sym}?range=5d&interval=1d"
+        r = requests.get(url, headers=UA, timeout=20)
+        if r.status_code != 200:
+            print(f"     {name}: HTTP {r.status_code}")
+            ok_all = False
+            continue
+        result = r.json().get("chart", {}).get("result")
+        if not result:
+            print(f"     {name}: 결과 없음")
+            ok_all = False
+            continue
+        q = result[0]["indicators"]["quote"][0]
+        meta = result[0].get("meta", {})
+        closes = [c for c in q["close"] if c is not None]
+        vols = [v for v in q.get("volume", []) if v is not None]
+        print(f"     {name}: 종가 {closes[-2:]}, 거래량필드존재={len(vols) > 0}, "
+              f"통화={meta.get('currency')}, 심볼={meta.get('symbol')}")
+    return ok_all, "3개 지수 확인"
+
+
+# ---------- 7. OHLCV 필드에 거래량 포함 여부 ----------
+def yahoo_chart_volume():
+    url = "https://query1.finance.yahoo.com/v8/finance/chart/MSFT?range=1mo&interval=1d"
+    r = requests.get(url, headers=UA, timeout=20)
+    if r.status_code != 200:
+        return False, f"HTTP {r.status_code}"
+    q = r.json()["chart"]["result"][0]["indicators"]["quote"][0]
+    keys = list(q.keys())
+    print(f"     제공 필드: {keys}")
+    vols = [v for v in q.get("volume", []) if v is not None]
+    print(f"     최근 거래량 3개: {vols[-3:]}")
+    return "volume" in q and len(vols) > 0, f"volume 필드 {len(vols)}개"
+
+
 check("1. S&P500 구성종목 목록 (GitHub CSV)", sp500_list)
 check("2. Yahoo Finance 배치 시세", yahoo_quote_batch)
 check("3. Yahoo Finance 일별 OHLCV", yahoo_chart)
 check("4. Yahoo Finance 회사 개요", yahoo_profile)
 check("5. 구글 뉴스 RSS (영문)", google_news_en)
+check("6. 지수 차트 (S&P500/나스닥/다우)", yahoo_index_chart)
+check("7. OHLCV 거래량 필드", yahoo_chart_volume)
 
 print("=" * 70)
 print("요약")
