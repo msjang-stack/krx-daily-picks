@@ -90,8 +90,20 @@ def fetch_corp_map():
             pass
     if not config.DART_API_KEY:
         return {}
-    r = requests.get("https://opendart.fss.or.kr/api/corpCode.xml",
-                     params={"crtfc_key": config.DART_API_KEY}, timeout=120)
+    # DART 서버가 느릴 때가 있어 짧게 끊고 두 번까지 다시 시도합니다.
+    r = None
+    for attempt in range(3):
+        try:
+            r = requests.get("https://opendart.fss.or.kr/api/corpCode.xml",
+                             params={"crtfc_key": config.DART_API_KEY},
+                             timeout=(10, 60))
+            break
+        except requests.RequestException as e:
+            print(f"[DART] 법인코드 요청 {attempt + 1}차 실패: {type(e).__name__}")
+            time.sleep(3 * (attempt + 1))
+    if r is None:
+        print("[DART] 법인코드 내려받기 포기 — 회사 개요 없이 진행합니다.")
+        return {}
     if r.content[:2] != b"PK":
         print(f"[DART] 법인코드 내려받기 실패: {r.text[:150]}")
         return {}

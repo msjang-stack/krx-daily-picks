@@ -58,7 +58,9 @@ def _snapshot_json(market):
             code = r.get("itemCode") or r.get("reutersCode")
             if not code or not re.fullmatch(r"\d{6}", str(code)):
                 continue
-            # 네이버는 시가총액·거래대금을 억원 단위로 줍니다. 원 단위로 맞춥니다.
+            # 네이버는 단위가 항목마다 다릅니다. 시가총액은 억원, 거래대금은 백만원.
+            # (예: 삼성전자 marketValue 15,346,481억원 = 1,534조 /
+            #      accumulatedTradingValue 14,769,098백만원 = 14.8조)
             cap = _num(r.get("marketValue"))
             val = _num(r.get("accumulatedTradingValue"))
             out.append({
@@ -68,7 +70,7 @@ def _snapshot_json(market):
                 "p": _num(r.get("closePrice")),
                 "pct": _num(r.get("fluctuationsRatio")),
                 "vol": _num(r.get("accumulatedTradingVolume")),
-                "val": val * 1e8 if val else None,
+                "val": val * 1e6 if val else None,
                 "cap": cap * 1e8 if cap else None,
             })
         total = _num(d.get("totalCount")) or 0

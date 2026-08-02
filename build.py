@@ -168,7 +168,12 @@ def main():
 
     # ---------- 7. 기업 개요 ----------
     info_codes = [s["c"] for s in news_targets]
-    info_raw = dart.enrich(info_codes)
+    try:
+        info_raw = dart.enrich(info_codes)
+    except Exception as e:
+        # 회사 개요는 부가 정보입니다. 실패해도 페이지는 나와야 합니다.
+        print(f"[기업정보] 건너뜀 ({type(e).__name__}: {e})")
+        info_raw = {}
     info = {}
     for code, d in info_raw.items():
         if not d:
