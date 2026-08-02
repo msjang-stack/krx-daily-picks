@@ -25,22 +25,29 @@ def eok(v):
 
 
 def build_universe(snap):
-    """동전주·저유동성·우선주를 걸러 화면에 올릴 후보를 만듭니다."""
+    """동전주·저유동성·우선주를 걸러 화면에 올릴 후보를 만듭니다.
+    어느 조건에서 얼마나 빠지는지 남겨, 필터가 과하면 바로 알 수 있게 합니다."""
     out = []
+    drop = {"값없음": 0, "우선주": 0, "스팩": 0, "저가": 0, "저유동성": 0, "소형주": 0}
     for s in snap:
         if not s.get("p") or not s.get("c"):
-            continue
-        if not s["c"].endswith("0"):          # 우선주 등 제외
-            continue
+            drop["값없음"] += 1; continue
+        if not s["c"].endswith("0"):
+            drop["우선주"] += 1; continue
         if "스팩" in (s.get("n") or ""):
-            continue
+            drop["스팩"] += 1; continue
         if s["p"] < config.MIN_PRICE:
-            continue
+            drop["저가"] += 1; continue
         if (s.get("val") or 0) < config.MIN_VALUE:
-            continue
+            drop["저유동성"] += 1; continue
         if s.get("cap") and s["cap"] < config.MIN_MARKET_CAP:
-            continue
+            drop["소형주"] += 1; continue
         out.append(s)
+    print("[유니버스] 제외 내역: " + ", ".join(f"{k} {v:,}" for k, v in drop.items() if v))
+    if snap:
+        sample = snap[0]
+        print(f"[유니버스] 표본: {sample.get('n')} 가격={sample.get('p')} "
+              f"거래량={sample.get('vol')} 거래대금={sample.get('val')} 시총={sample.get('cap')}")
     return out
 
 

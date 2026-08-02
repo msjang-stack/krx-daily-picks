@@ -49,10 +49,18 @@ def _snapshot_json(market):
         rows = d.get("stocks") or d.get("datas") or []
         if not rows:
             break
+        if page == 1:
+            # 필드 이름과 단위는 예고 없이 바뀔 수 있어 첫 행을 남겨둡니다.
+            print(f"[스냅샷] {market} 응답 예시: "
+                  + json.dumps({k: v for k, v in list(rows[0].items())[:14]},
+                               ensure_ascii=False)[:400])
         for r in rows:
             code = r.get("itemCode") or r.get("reutersCode")
             if not code or not re.fullmatch(r"\d{6}", str(code)):
                 continue
+            # 네이버는 시가총액·거래대금을 억원 단위로 줍니다. 원 단위로 맞춥니다.
+            cap = _num(r.get("marketValue"))
+            val = _num(r.get("accumulatedTradingValue"))
             out.append({
                 "c": str(code),
                 "n": r.get("stockName") or r.get("itemName") or "",
@@ -60,8 +68,8 @@ def _snapshot_json(market):
                 "p": _num(r.get("closePrice")),
                 "pct": _num(r.get("fluctuationsRatio")),
                 "vol": _num(r.get("accumulatedTradingVolume")),
-                "val": _num(r.get("accumulatedTradingValue")),
-                "cap": _num(r.get("marketValue")),
+                "val": val * 1e8 if val else None,
+                "cap": cap * 1e8 if cap else None,
             })
         total = _num(d.get("totalCount")) or 0
         if len(out) >= total or len(rows) < 100:
