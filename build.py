@@ -298,7 +298,9 @@ def sync_archive(date_iso: str, dt: datetime) -> int:
         shutil.rmtree(today_dir)
     shutil.copytree(config.OUT_DIR, today_dir)
 
-    cutoff = dt - timedelta(days=config.ARCHIVE_DAYS)
+    # 폴더명(YYYY-MM-DD)에서 파싱한 날짜는 시간대 정보가 없어, dt도 naive로 맞춥니다.
+    dt_naive = dt.replace(tzinfo=None) if dt.tzinfo else dt
+    cutoff = dt_naive - timedelta(days=config.ARCHIVE_DAYS)
     for name in os.listdir(archive_root):
         path = os.path.join(archive_root, name)
         if not os.path.isdir(path):
