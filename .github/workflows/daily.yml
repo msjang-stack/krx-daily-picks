@@ -1,0 +1,45 @@
+name: Build daily page
+
+on:
+  schedule:
+    # 평일 16:40 KST (UTC 07:40)
+    - cron: "40 7 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      chart_limit:
+        description: "차트를 준비할 종목 수"
+        required: false
+        default: "800"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+
+      - name: Restore cache
+        uses: actions/cache@v4
+        with:
+          path: cache
+          key: krx-cache-${{ github.run_id }}
+          restore-keys: krx-cache-
+
+      - name: Build
+        env:
+          NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
+          NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
+          DART_API_KEY: ${{ secrets.DART_API_KEY }}
+          CHART_LIMIT: ${{ github.event.inputs.chart_limit || '800' }}
+        run: python build.py
+
+      - name: Upload page
+        uses: actions/upload-artifact@v4
+        with:
+          name: page
+          path: dist/
+          retention-days: 14
