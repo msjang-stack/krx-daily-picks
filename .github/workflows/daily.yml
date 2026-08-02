@@ -55,7 +55,7 @@ jobs:
         if: env.CLOUDFLARE_API_TOKEN != ''
         run: |
           npx --yes wrangler@4 pages deploy dist \
-            --project-name=krx-daily-picks \
+            --project-name=${{ vars.CF_PROJECT_NAME || 'stock-daily-briefing' }} \
             --branch=main \
             --commit-dirty=true
 
