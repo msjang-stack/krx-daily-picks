@@ -25,6 +25,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # Cloudflare 키가 없으면 아래 배포 단계는 건너뜁니다.
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -46,6 +50,14 @@ jobs:
           DART_API_KEY: ${{ secrets.DART_API_KEY }}
           CHART_LIMIT: ${{ github.event.inputs.chart_limit || '1200' }}
         run: python build.py
+
+      - name: Deploy to Cloudflare Pages
+        if: env.CLOUDFLARE_API_TOKEN != ''
+        run: |
+          npx --yes wrangler@4 pages deploy dist \
+            --project-name=krx-daily-picks \
+            --branch=main \
+            --commit-dirty=true
 
       - name: Upload for Pages
         uses: actions/upload-pages-artifact@v3

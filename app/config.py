@@ -31,6 +31,8 @@ CACHE_DIR = os.environ.get("CACHE_DIR", "cache")
 MIN_PRICE = _int("MIN_PRICE", 1000)
 MIN_VALUE = _int("MIN_VALUE", 1_000_000_000)        # 당일 거래대금 하한(원)
 MIN_MARKET_CAP = _int("MIN_MARKET_CAP", 50_000_000_000)
+# '내일 주목할 종목'의 거래대금 하한. 너무 얇은 종목은 신호가 나와도 사고팔기 어렵습니다.
+MIN_WATCH_VALUE = _int("MIN_WATCH_VALUE", 30_000_000_000)   # 300억원
 
 UA = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "

@@ -108,6 +108,12 @@ def main():
     print(f"[시세] 완료: 차트 {len(charts):,}개, 지표 {len(metrics):,}개, 실패 {fail}")
 
     # ---------- 3. 지수 ----------
+    # 시장 거래대금은 지수 API가 주는 필드가 불확실해, 상장 종목 거래대금의 합으로 냅니다.
+    market_value = {}
+    for s in snap:
+        if s.get("val"):
+            market_value[s["mkt"]] = market_value.get(s["mkt"], 0) + s["val"]
+
     indices = []
     for name in ("KOSPI", "KOSDAQ"):
         try:
@@ -118,7 +124,8 @@ def main():
         if not ix:
             continue
         ix["series"] = naver.fetch_index_series(name)
-        ix["value"] = eok(ix.pop("value", None))
+        ix.pop("value", None)
+        ix["value"] = eok(market_value.get(name))
         ix["flow"] = None                      # 시장 전체 수급은 아직 미확보
         indices.append(ix)
     print(f"[지수] {len(indices)}개 수집")
@@ -153,7 +160,12 @@ def main():
                 "note": note}
 
     stocks = [row(s) for s in universe]
-    watch = picks.pick(by_value[: config.CHART_LIMIT], metrics)
+
+    # 거래가 얇은 종목은 조건을 쉽게 충족하지만 실제로 사고팔기 어렵습니다.
+    watch_pool = [s for s in by_value if (s.get("val") or 0) >= config.MIN_WATCH_VALUE]
+    print(f"[주목] 후보 {len(watch_pool):,}종목 "
+          f"(거래대금 {config.MIN_WATCH_VALUE / 1e8:,.0f}억원 이상)")
+    watch = picks.pick(watch_pool, metrics)
     for w in watch:
         w["val"] = round((w.get("val") or 0) / 1e8)
     print(f"[주목] {len(watch)}종목 선정: " + ", ".join(w["n"] for w in watch))
