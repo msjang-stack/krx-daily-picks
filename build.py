@@ -252,7 +252,51 @@ def main():
 
     kb = os.path.getsize(out) / 1024
     print(f"[완료] {out} ({kb:,.0f} KB) · {time.time() - started:.0f}초 소요")
+
+    print_summary(data, by_value, by_gain)
     return 0
+
+
+def print_summary(data, by_value, by_gain):
+    """만들어진 페이지에 실제로 무엇이 담겼는지 로그로 남깁니다."""
+    line = "─" * 58
+    print("\n" + line)
+    print(f"  {data['dateLabel']} ({data['weekday']}) 마감 시황 — 생성 내용")
+    print(line)
+
+    for ix in data["indices"]:
+        arrow = "▲" if (ix["pct"] or 0) > 0 else ("▼" if (ix["pct"] or 0) < 0 else "―")
+        print(f"  {ix['name']:5s} {ix['val']:>10,.2f}  {arrow} {ix['pct']:+.2f}%   거래대금 {ix['value']}원")
+
+    br = data["briefing"]["breadth"]
+    print(f"  상승 {br['up']:,} · 보합 {br['flat']:,} · 하락 {br['down']:,}")
+
+    print("\n  [내일 주목할 종목]")
+    if not data["watch"]:
+        print("    조건을 충족한 종목이 없습니다.")
+    for i, w in enumerate(data["watch"], 1):
+        print(f"    {i}. {w['n']} ({w['c']}, {w['mkt']})  {w['p']:,}원 {w['pct']:+.2f}%")
+        for label, detail in w["checks"]:
+            print(f"       · {label}" + (f" — {detail}" if detail else ""))
+
+    for market in ("KOSPI", "KOSDAQ"):
+        for title, rows in (("거래대금 상위", by_value), ("등락률 상위", by_gain)):
+            picked = [s for s in rows if s["mkt"] == market][:5]
+            if not picked:
+                continue
+            print(f"\n  [{market} {title}]")
+            for i, s in enumerate(picked, 1):
+                val = (s.get("val") or 0) / 1e8
+                print(f"    {i}. {s['n']:<14s} {s['p']:>9,}원 {s['pct']:>+7.2f}%  거래대금 {val:>7,.0f}억")
+
+    print("\n  [주요 뉴스]")
+    for n in data["news"]:
+        print(f"    · {n['t']}  ({n['s']}, {n['w']})")
+
+    named = [c for c in data["stockNews"] if data["stockNews"][c]]
+    print(f"\n  종목 뉴스 {len(named)}종목 · 회사 개요 {len(data['info'])}건 "
+          f"· 차트 {len(data['charts'])}개 내장")
+    print(line + "\n")
 
 
 if __name__ == "__main__":
