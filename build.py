@@ -199,7 +199,25 @@ def main():
     else:
         dt = now
 
+    # 차트는 종목별 파일로 나눕니다. 첫 화면에 바로 보이는 종목만 페이지에 담고,
+    # 검색으로 찾아 들어가는 종목은 누를 때 그 종목 파일 하나만 받아옵니다.
+    visible = set()
+    for s in watch:
+        visible.add(s["c"])
+    for group in (by_value, by_gain):
+        for s in group[: config.TOP_N * 2]:
+            visible.add(s["c"])
+
+    chart_dir = os.path.join(config.OUT_DIR, "charts")
+    os.makedirs(chart_dir, exist_ok=True)
+    for code, c in charts.items():
+        with open(os.path.join(chart_dir, f"{code}.json"), "w", encoding="utf-8") as f:
+            json.dump(c, f, ensure_ascii=False, separators=(",", ":"))
+    inline = {c: v for c, v in charts.items() if c in visible}
+    print(f"[차트] 개별 파일 {len(charts):,}개 저장, 페이지 내장 {len(inline)}개")
+
     data = {
+        "chartDir": "charts/",
         "dateLabel": f"{dt.year}년 {dt.month}월 {dt.day}일",
         "weekday": WEEKDAY[dt.weekday()],
         "closeNote": "15:30 종가 기준",
@@ -210,7 +228,7 @@ def main():
         "watch": watch,
         "info": info,
         "stockNews": stock_news,
-        "charts": charts,
+        "charts": inline,
         "builtAt": now.strftime("%Y-%m-%d %H:%M"),
     }
 

@@ -585,6 +585,8 @@
     color: var(--ink-3);
   }
   .empty-news { color: var(--ink-3); font-size: 13px; }
+  .chart-loading { color: var(--ink-3); font-size: 13px; }
+  .chart-slot { min-height: 40px; }
 
   .sheet-close {
     width: 100%;
@@ -963,13 +965,6 @@
     return n;
   }
 
-  // CHARTS[종목코드] = {d:["20260731",...], c:[종가...], v:[거래량...]}
-  function loadSeries(code) {
-    var x = CHARTS[code];
-    if (!x || !x.c || x.c.length < 2) return null;
-    return { dates: x.d, closes: x.c, vols: x.v };
-  }
-
   function movingAvg(arr, win) {
     return arr.map(function (_, i) {
       if (i < win - 1) return null;
@@ -984,14 +979,63 @@
     return parseInt(t.slice(4, 6), 10) + "/" + parseInt(t.slice(6, 8), 10);
   }
 
+  var CHART_CACHE = {};
+
+  // 자주 보는 종목은 페이지에 들어있고, 나머지는 누를 때 파일 하나만 받아옵니다.
+  function fetchSeries(code, done) {
+    if (CHARTS[code]) return done(normalize(CHARTS[code]));
+    if (code in CHART_CACHE) return done(CHART_CACHE[code]);
+    if (!D.chartDir) return done(null);
+    fetch(D.chartDir + code + ".json")
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (j) { CHART_CACHE[code] = normalize(j); done(CHART_CACHE[code]); })
+      .catch(function () { CHART_CACHE[code] = null; done(null); });
+  }
+
+  function normalize(x) {
+    if (!x || !x.c || x.c.length < 2) return null;
+    return { dates: x.d, closes: x.c, vols: x.v };
+  }
+
   function buildChart(w) {
-    var series = loadSeries(w.c);
-    if (!series) {
-      var none = el("div", null);
-      none.appendChild(el("div", "sub", "최근 시세"));
-      none.appendChild(el("p", "desc empty-news", "이 종목은 차트 데이터를 준비하지 못했습니다."));
-      return none;
-    }
+    var host = el("div", "chart-block");
+    var head = el("div", "chart-head");
+    head.appendChild(el("span", "sub", "최근 시세"));
+    host.appendChild(head);
+
+    var slot = el("div", "chart-slot");
+    slot.appendChild(el("p", "desc chart-loading", "차트를 불러오는 중입니다…"));
+    host.appendChild(slot);
+
+    fetchSeries(w.c, function (series) {
+      slot.innerHTML = "";
+      if (!series) {
+        // 파일을 직접 열면(file://) 브라우저가 추가 파일 읽기를 막습니다.
+        slot.appendChild(el("p", "desc empty-news",
+          location.protocol === "file:"
+            ? "차트는 웹 주소로 열었을 때 표시됩니다. 파일을 직접 열면 브라우저가 차단합니다."
+            : "이 종목은 차트 데이터를 준비하지 못했습니다."));
+        return;
+      }
+      head.firstChild.textContent = "최근 " + series.closes.length + "거래일";
+      head.appendChild(legendNode(w));
+      drawChart(slot, w, series);
+    });
+    return host;
+  }
+
+  function legendNode(w) {
+    var main = (w.pct || 0) >= 0 ? "var(--up)" : "var(--down)";
+    var lg = el("div", "legend");
+    var l1 = el("span", null);
+    l1.innerHTML = '<i style="background:' + main + '"></i>종가';
+    var l2 = el("span", null);
+    l2.innerHTML = '<i style="background:repeating-linear-gradient(90deg,var(--ink-3) 0 4px,transparent 4px 7px)"></i>20일선';
+    lg.appendChild(l1); lg.appendChild(l2);
+    return lg;
+  }
+
+  function drawChart(host, w, series) {
     var closes = series.closes, vols = series.vols, dates = series.dates;
     var DAYS = closes.length;
     var ma20 = movingAvg(closes, 20);
@@ -1003,17 +1047,16 @@
     var span = (hi - lo) || 1;
     lo -= span * 0.08; hi += span * 0.08; span = hi - lo;
 
-    function x(i) { return PX + (i / (DAYS - 1)) * (W - PX * 2); }
+    function x(i) { return PX + (i / (DAYS - 1 || 1)) * (W - PX * 2); }
     function y(v) { return PT + (1 - (v - lo) / span) * (priceH - PT); }
 
     var box = el("div", "chart-wrap");
     var node = svg("svg", {
       "class": "chart", viewBox: "0 0 " + W + " " + H,
       preserveAspectRatio: "none", role: "img",
-      "aria-label": w.n + " 최근 60거래일 종가 추이. 시안용 가짜 데이터입니다."
+      "aria-label": w.n + " 최근 " + DAYS + "거래일 종가 추이"
     });
 
-    // 옅은 가로 격자
     [0.25, 0.5, 0.75].forEach(function (f) {
       node.appendChild(svg("line", {
         x1: 0, x2: W, y1: PT + f * (priceH - PT), y2: PT + f * (priceH - PT),
@@ -1021,10 +1064,11 @@
       }));
     });
 
-    var up = w.pct >= 0;
+    var up = (w.pct || 0) >= 0;
     var main = up ? "var(--up)" : "var(--down)";
-
-    var d = closes.map(function (c, i) { return (i ? "L" : "M") + x(i).toFixed(1) + " " + y(c).toFixed(1); }).join(" ");
+    var d = closes.map(function (c, i) {
+      return (i ? "L" : "M") + x(i).toFixed(1) + " " + y(c).toFixed(1);
+    }).join(" ");
 
     var gid = "cg" + w.c;
     var defs = svg("defs", {});
@@ -1035,27 +1079,27 @@
     node.appendChild(defs);
 
     node.appendChild(svg("path", {
-      d: d + " L" + x(DAYS - 1) + " " + (priceH) + " L" + x(0) + " " + priceH + " Z",
+      d: d + " L" + x(DAYS - 1) + " " + priceH + " L" + x(0) + " " + priceH + " Z",
       fill: "url(#" + gid + ")"
     }));
 
-    // 20일 이동평균선
     var mstart = ma20.findIndex(function (v) { return v !== null; });
-    var md = ma20.slice(mstart).map(function (v, i) {
-      return (i ? "L" : "M") + x(i + mstart).toFixed(1) + " " + y(v).toFixed(1);
-    }).join(" ");
-    node.appendChild(svg("path", {
-      d: md, fill: "none", stroke: "var(--ink-3)", "stroke-width": 1.5,
-      "stroke-dasharray": "4 3", "vector-effect": "non-scaling-stroke"
-    }));
+    if (mstart >= 0) {
+      var md = ma20.slice(mstart).map(function (v, i) {
+        return (i ? "L" : "M") + x(i + mstart).toFixed(1) + " " + y(v).toFixed(1);
+      }).join(" ");
+      node.appendChild(svg("path", {
+        d: md, fill: "none", stroke: "var(--ink-3)", "stroke-width": 1.5,
+        "stroke-dasharray": "4 3", "vector-effect": "non-scaling-stroke"
+      }));
+    }
 
     node.appendChild(svg("path", {
       d: d, fill: "none", stroke: main, "stroke-width": 2,
       "stroke-linejoin": "round", "vector-effect": "non-scaling-stroke"
     }));
 
-    // 거래량 막대
-    var vmax = Math.max.apply(null, vols);
+    var vmax = Math.max.apply(null, vols) || 1;
     var bw = (W - PX * 2) / DAYS * 0.62;
     vols.forEach(function (v, i) {
       var h = Math.max(1, (v / vmax) * volH);
@@ -1066,17 +1110,14 @@
       }));
     });
 
-    // 마지막 종가 강조
     node.appendChild(svg("circle", { cx: x(DAYS - 1), cy: y(closes[DAYS - 1]), r: 3, fill: main }));
 
-    // 커서 표시선
     var cross = svg("line", {
       x1: 0, x2: 0, y1: PT, y2: priceH, stroke: "var(--ink-3)",
       "stroke-width": 1, "vector-effect": "non-scaling-stroke", opacity: 0
     });
     var cdot = svg("circle", { r: 3.5, fill: main, stroke: "var(--surface)", "stroke-width": 2, opacity: 0 });
     node.appendChild(cross); node.appendChild(cdot);
-
     box.appendChild(node);
 
     var tip = el("div", "chart-tip");
@@ -1106,25 +1147,12 @@
     node.addEventListener("pointerdown", hover);
     node.addEventListener("pointerleave", leave);
 
+    host.appendChild(box);
+
     var foot = el("div", "chart-foot");
     foot.appendChild(el("span", null, fmtDay(dates[0])));
     foot.appendChild(el("span", null, "오늘"));
-
-    var wrap = document.createDocumentFragment();
-    var head = el("div", "chart-head");
-    head.appendChild(el("span", "sub", "최근 " + DAYS + "거래일"));
-    var lg = el("div", "legend");
-    var l1 = el("span", null);
-    l1.innerHTML = '<i style="background:' + main + '"></i>종가';
-    var l2 = el("span", null);
-    l2.innerHTML = '<i style="background:repeating-linear-gradient(90deg,var(--ink-3) 0 4px,transparent 4px 7px)"></i>20일선';
-    lg.appendChild(l1); lg.appendChild(l2);
-    head.appendChild(lg);
-
-    wrap.appendChild(head);
-    wrap.appendChild(box);
-    wrap.appendChild(foot);
-    return wrap;
+    host.appendChild(foot);
   }
 
   /* ===== 상세 시트 ===== */
