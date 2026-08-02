@@ -27,11 +27,20 @@ def eok(v):
 def build_universe(snap):
     """동전주·저유동성·우선주를 걸러 화면에 올릴 후보를 만듭니다.
     어느 조건에서 얼마나 빠지는지 남겨, 필터가 과하면 바로 알 수 있게 합니다."""
+    kinds = {}
+    for s in snap:
+        kinds[s.get("kind") or "(없음)"] = kinds.get(s.get("kind") or "(없음)", 0) + 1
+    print("[유니버스] 종류 분포: " + ", ".join(f"{k} {v:,}" for k, v in sorted(kinds.items())))
+
     out = []
-    drop = {"값없음": 0, "우선주": 0, "스팩": 0, "저가": 0, "저유동성": 0, "소형주": 0}
+    drop = {"값없음": 0, "ETF·ETN": 0, "우선주": 0, "스팩": 0,
+            "저가": 0, "저유동성": 0, "소형주": 0}
     for s in snap:
         if not s.get("p") or not s.get("c"):
             drop["값없음"] += 1; continue
+        # 레버리지 ETF는 등락률 상위를 독차지해 정작 종목이 안 보입니다.
+        if s.get("kind") and s["kind"] != "stock":
+            drop["ETF·ETN"] += 1; continue
         if not s["c"].endswith("0"):
             drop["우선주"] += 1; continue
         if "스팩" in (s.get("n") or ""):

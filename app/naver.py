@@ -67,6 +67,8 @@ def _snapshot_json(market):
                 "c": str(code),
                 "n": r.get("stockName") or r.get("itemName") or "",
                 "mkt": market,
+                # 'stock' 외에 etf/etn 등이 섞여 옵니다. 종목만 남기는 데 씁니다.
+                "kind": (r.get("stockEndType") or "").lower(),
                 "p": _num(r.get("closePrice")),
                 "pct": _num(r.get("fluctuationsRatio")),
                 "vol": _num(r.get("accumulatedTradingVolume")),
