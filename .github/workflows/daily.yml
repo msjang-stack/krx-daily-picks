@@ -9,7 +9,17 @@ on:
       chart_limit:
         description: "차트를 준비할 종목 수"
         required: false
-        default: "800"
+        default: "1200"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 배포가 겹치지 않도록 한 번에 하나씩만 진행합니다.
+concurrency:
+  group: pages
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -34,12 +44,21 @@ jobs:
           NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
           NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
           DART_API_KEY: ${{ secrets.DART_API_KEY }}
-          CHART_LIMIT: ${{ github.event.inputs.chart_limit || '800' }}
+          CHART_LIMIT: ${{ github.event.inputs.chart_limit || '1200' }}
         run: python build.py
 
-      - name: Upload page
-        uses: actions/upload-artifact@v4
+      - name: Upload for Pages
+        uses: actions/upload-pages-artifact@v3
         with:
-          name: page
-          path: dist/
-          retention-days: 14
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

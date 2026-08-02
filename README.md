@@ -66,4 +66,4 @@ app/template.html     화면 (데이터는 빌드 시 주입)
 ## 남은 일
 
 - 시장 전체의 개인·외국인·기관 수급 (현재 미수집, 화면에서 자동으로 숨김)
-- 호스팅 연결 (GitHub Pages 또는 Cloudflare Pages)
+- (완료) GitHub Pages 자동 배포
