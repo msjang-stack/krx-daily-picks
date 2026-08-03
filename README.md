@@ -43,14 +43,25 @@
 마감한 미국 시세가 확정돼 있습니다. 그래서 국내와 같은 한 번의 실행 안에서 미국 데이터도
 함께 만듭니다 (`build.py` → `app/us_build.py`).
 
+다만 그렇게만 하면 미국 장이 끝난(새벽 5~6시) 뒤부터 국내 빌드가 도는 16:40까지
+10시간 넘게 미국 탭이 전날 것으로 멈춰 있게 됩니다. 그래서 미국 장 마감 직후인
+07:00 KST에 **미국 데이터만** 한 번 더 새로 만드는 워크플로(`us_morning.py`,
+`.github/workflows/us-morning.yml`)를 따로 둡니다. 국내 페이지는 캐시에 저장된
+어제(마지막 거래일) 것을 그대로 복원해 건드리지 않고, `dist/us.json`과
+`dist/us/charts/`만 새로 만들어 배포합니다. 이때는 그날 아카이브에 정식으로
+반영하지 않습니다 — 국내 쪽의 "오늘"이 아직 실제로 오지 않았기 때문입니다
+(오후 16:40에 국내 빌드가 돌 때 그날치로 정식 아카이브됩니다).
+
 ## 실행
 
 ```bash
 pip install -r requirements.txt
-python build.py          # dist/index.html 생성
+python build.py          # dist/index.html + dist/us.json 생성
+python us_morning.py     # (참고) 국내 페이지는 캐시 것을 복원하고 dist/us.json만 새로 만듦
 ```
 
-자동 실행은 평일 16:40 KST(`.github/workflows/daily.yml`)이며,
+자동 실행은 평일 16:40 KST(`.github/workflows/daily.yml`, 국내+미국 전체)와
+평일 07:00 KST(`.github/workflows/us-morning.yml`, 미국만)이며, `daily.yml`은
 Actions 탭에서 수동 실행 시 차트를 준비할 종목 수를 지정할 수 있습니다.
 
 ## 설정 (환경변수)
@@ -68,6 +79,7 @@ Actions 탭에서 수동 실행 시 차트를 준비할 종목 수를 지정할 
 
 ```
 build.py              국내 수집 → 계산 → dist/index.html 생성 (마지막에 app/us_build.run() 호출)
+us_morning.py          (07:00 KST 전용) 어제 사이트를 복원하고 미국 데이터만 새로 만듦
 app/us_build.py        미국 수집 → 계산 → dist/us.json 생성 (탭을 눌러야 내려받음)
 app/naver.py          네이버 금융 수집 (국내 시세·지수·일별시세)
 app/yahoo.py          야후 파이낸스 수집 (미국 시세·지수·일별시세) + S&P500 목록
@@ -94,3 +106,4 @@ app/template.html     화면. 상단 탭으로 국내(D=window.__DATA__)/미국(
 - (완료) 미국 시장(S&P500) 탭 추가
 - (완료) 코스피·코스닥 개인·외국인·기관 순매수
 - (완료) 국내 휴장일에 아카이브가 잘못 덮어써지는 문제
+- (완료) 미국 장 마감(새벽) ~ 국내 빌드(오후) 사이 미국 탭이 전날 것으로 멈춰 있던 문제

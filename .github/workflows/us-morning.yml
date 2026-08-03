@@ -1,0 +1,66 @@
+name: Refresh US market (morning)
+
+on:
+  schedule:
+    # 한국시간 아침 07:00 (UTC 22:00 전날), 평일 아침에만 실행되도록 UTC 일-목에 돌립니다.
+    # 미국 장은 서머타임 여부에 따라 한국시간 05:00~06:00에 끝나므로 충분히 지난 시각입니다.
+    - cron: "0 22 * * 0-4"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 국내 빌드(daily.yml)와 배포가 겹치지 않도록 같은 그룹으로 묶습니다.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+
+      - name: Restore cache
+        uses: actions/cache/restore@v4
+        with:
+          path: cache
+          key: krx-cache-none
+          restore-keys: krx-cache-
+
+      - name: Refresh US data only
+        run: python us_morning.py
+
+      - name: Deploy to Cloudflare Pages
+        if: env.CLOUDFLARE_API_TOKEN != ''
+        run: |
+          npx --yes wrangler@4 pages deploy dist \
+            --project-name=${{ vars.CF_PROJECT_NAME || 'stock-daily-briefing' }} \
+            --branch=main \
+            --commit-dirty=true
+
+      - name: Upload for Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: refresh
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
