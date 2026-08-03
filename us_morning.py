@@ -42,10 +42,24 @@ def restore_latest_site() -> bool:
     return True
 
 
+def save_pending_cache():
+    """오후 국내 빌드(build.py)가 미국 데이터를 다시 받아오지 않고 재사용할 수 있도록,
+    방금 만든 dist/us.json + dist/us/charts를 캐시에도 남겨 둡니다."""
+    pending = os.path.join(config.CACHE_DIR, "us_pending")
+    if os.path.exists(pending):
+        shutil.rmtree(pending)
+    os.makedirs(pending, exist_ok=True)
+    shutil.copy2(os.path.join(config.OUT_DIR, "us.json"), os.path.join(pending, "us.json"))
+    src_charts = os.path.join(config.OUT_DIR, "us", "charts")
+    if os.path.isdir(src_charts):
+        shutil.copytree(src_charts, os.path.join(pending, "us", "charts"))
+
+
 def main():
     if not restore_latest_site():
         return 1
     us_build.run()
+    save_pending_cache()
     print("[아침 갱신] 완료 — 국내 페이지는 어제 것 그대로, 미국 데이터만 새로 만들었습니다")
     return 0
 

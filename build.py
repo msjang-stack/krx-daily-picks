@@ -288,7 +288,8 @@ def main():
     # 국내 페이지와 별도 파일(dist/us.json)로 두어, "국내 시장" 탭만 볼 때는
     # 받지 않게 합니다. 실패해도 국내 페이지는 그대로 나가야 합니다.
     try:
-        us_build.run()
+        if not reuse_morning_us_build(now):
+            us_build.run()
     except Exception:
         print("[미국 시장] 실패, 국내 페이지만 배포합니다")
         traceback.print_exc()
@@ -305,6 +306,41 @@ def main():
 
     print_summary(data, by_value, by_gain)
     return 0
+
+
+def reuse_morning_us_build(now: datetime) -> bool:
+    """
+    us_morning.py(07:00 KST)가 오늘 아침 이미 받아온 미국 데이터가 있으면 그걸
+    dist/에 그대로 옮겨 씁니다. 미국 장은 아침과 오후 사이에 새로 열리지 않으므로
+    다시 받아올 필요가 없습니다 (503종목 재요청은 순전히 낭비입니다).
+    아침 것이 없거나, 오늘 것이 아니거나(예: 아침 작업이 며칠째 실패 중), 뭔가
+    잘못되면 False를 돌려주고 호출부가 새로 받아오게 합니다.
+    """
+    pending_dir = os.path.join(config.CACHE_DIR, "us_pending")
+    src_json = os.path.join(pending_dir, "us.json")
+    if not os.path.exists(src_json):
+        return False
+    try:
+        with open(src_json, encoding="utf-8") as f:
+            pending = json.load(f)
+        built_date = (pending.get("builtAt") or "").split(" ")[0]
+        if built_date != now.strftime("%Y-%m-%d"):
+            print(f"[미국 시장] 아침 캐시가 오늘 것이 아니라({pending.get('builtAt')}) 새로 받아옵니다")
+            return False
+
+        dst_json = os.path.join(config.OUT_DIR, "us.json")
+        shutil.copy2(src_json, dst_json)
+        src_charts = os.path.join(pending_dir, "us", "charts")
+        dst_charts = os.path.join(config.OUT_DIR, "us", "charts")
+        if os.path.exists(dst_charts):
+            shutil.rmtree(dst_charts)
+        if os.path.isdir(src_charts):
+            shutil.copytree(src_charts, dst_charts)
+        print(f"[미국 시장] 오늘 아침({pending.get('builtAt')})에 받아온 데이터를 재사용합니다")
+        return True
+    except Exception as e:
+        print(f"[미국 시장] 아침 캐시 재사용 실패, 새로 받아옵니다: {type(e).__name__}: {e}")
+        return False
 
 
 def sync_archive(date_iso: str, dt: datetime, fresh: bool = True) -> int:
