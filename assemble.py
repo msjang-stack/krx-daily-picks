@@ -50,8 +50,9 @@ def _copy_us():
 
 
 def _archive():
-    """오늘자 dist/ 전체(국내+미국)를 날짜별로 보관합니다. 국내 빌드가 남긴
-    meta.json의 거래일을 기준으로 삼습니다 — '그날'의 정의는 국내 장 기준입니다."""
+    """오늘자 dist/ 전체(국내+미국)를 국내 거래일 기준으로 보관합니다. 국내 빌드가
+    남긴 meta.json의 거래일을 씁니다 — '그날'의 기본 정의는 국내 장 기준입니다.
+    (미국 쪽 날짜가 어긋나 있을 때의 보완은 _ensure_us_archived가 따로 맡습니다.)"""
     meta_path = os.path.join(config.KR_CACHE_DIR, "meta.json")
     if not os.path.exists(meta_path):
         print("[아카이브] 국내 데이터가 없어 건너뜁니다")
@@ -76,27 +77,91 @@ def _archive():
         if os.path.exists(today_dir):
             shutil.rmtree(today_dir)
         shutil.copytree(config.OUT_DIR, today_dir, ignore=shutil.ignore_patterns("archive"))
+        print(f"[아카이브] {date_iso}(국내 기준) 저장")
     else:
         print(f"[아카이브] {date_iso}는 이미 확정된 기록이라 건드리지 않습니다")
 
-    dt_naive = dt.replace(tzinfo=None) if dt.tzinfo else dt
-    cutoff = dt_naive - timedelta(days=config.ARCHIVE_DAYS)
-    for name in os.listdir(archive_root):
-        path = os.path.join(archive_root, name)
-        if not os.path.isdir(path):
+
+def _ensure_us_archived():
+    """
+    지금 cache/us_latest가 가진 날짜(미국 거래일)가 아카이브 어딘가에 반드시
+    남아 있게 합니다.
+
+    문제 상황: 국내 아카이브(_archive)는 국내 거래일 기준으로만 기록을 남기는데,
+    미국 쪽 날짜가 국내와 어긋나 있는 채로(예: 주말 사이 미국만 새 거래일이
+    생겼거나, 국내 아카이브가 아직 그 날짜를 처리하기 전) 다음 미국 갱신이 오면
+    그 사이에 있던 미국 거래일 데이터가 어디에도 기록되지 못하고 다음 값으로
+    덮어써져 통째로 사라집니다. (2026-07-31 미국 데이터가 실제로 이렇게
+    사라진 적 있음 — 재발 방지용.)
+
+    그래서 매번 조립할 때마다, 미국 날짜로 된 아카이브 폴더가 없으면 지금 시점의
+    dist/ 전체(가장 최근 국내 페이지 + 이번 미국 데이터)를 그대로 새 기록으로
+    만들어 둡니다. 이미 있으면(보통 국내 아카이브가 같은 날 이미 만들어 둔 경우)
+    미국 부분만 최신으로 맞춥니다.
+    """
+    us_json_path = os.path.join(config.US_CACHE_DIR, "us.json")
+    if not os.path.exists(us_json_path):
+        return
+    with open(us_json_path, encoding="utf-8") as f:
+        us_date = json.load(f).get("dateISO")
+    if not us_date:
+        return
+
+    archive_root = os.path.join(config.CACHE_DIR, "archive")
+    os.makedirs(archive_root, exist_ok=True)
+    target_dir = os.path.join(archive_root, us_date)
+
+    if not os.path.exists(target_dir):
+        os.makedirs(target_dir, exist_ok=True)
+        for name in os.listdir(config.OUT_DIR):
+            if name == "archive":
+                continue
+            s, d = os.path.join(config.OUT_DIR, name), os.path.join(target_dir, name)
+            if os.path.isdir(s):
+                shutil.copytree(s, d)
+            elif os.path.exists(s):
+                shutil.copy2(s, d)
+        print(f"[아카이브] {us_date}(미국 기준) 새로 기록 "
+              f"— 국내 쪽에 이 날짜 기록이 아직 없어 지금 국내 페이지를 함께 담음")
+    else:
+        shutil.copy2(us_json_path, os.path.join(target_dir, "us.json"))
+        src_charts = os.path.join(config.US_CACHE_DIR, "us")
+        dst_charts = os.path.join(target_dir, "us")
+        if os.path.isdir(src_charts):
+            if os.path.exists(dst_charts):
+                shutil.rmtree(dst_charts)
+            shutil.copytree(src_charts, dst_charts)
+
+
+def _prune_and_manifest():
+    """보관기간 지난 날짜를 지우고 date-picker용 manifest.json을 다시 만듭니다.
+    아카이브가 바뀔 수 있는 모든 경로(_archive, _ensure_us_archived) 뒤에
+    공통으로 부릅니다."""
+    archive_root = os.path.join(config.CACHE_DIR, "archive")
+    os.makedirs(archive_root, exist_ok=True)
+
+    def _dates():
+        return sorted(n for n in os.listdir(archive_root) if os.path.isdir(os.path.join(archive_root, n)))
+
+    parsed = []
+    for n in _dates():
+        try:
+            parsed.append(datetime.strptime(n, "%Y-%m-%d"))
+        except ValueError:
             continue
+    latest_dt = max(parsed) if parsed else datetime.now(KST).replace(tzinfo=None)
+    cutoff = latest_dt - timedelta(days=config.ARCHIVE_DAYS)
+
+    for name in _dates():
         try:
             d = datetime.strptime(name, "%Y-%m-%d")
         except ValueError:
             continue
         if d < cutoff:
-            shutil.rmtree(path)
+            shutil.rmtree(os.path.join(archive_root, name))
             print(f"[아카이브] {name} 삭제 (보관기간 {config.ARCHIVE_DAYS}일 초과)")
 
-    dates = sorted(
-        (n for n in os.listdir(archive_root) if os.path.isdir(os.path.join(archive_root, n))),
-        reverse=True,
-    )
+    dates = sorted(_dates(), reverse=True)
     manifest = []
     for d in dates:
         dt_d = datetime.strptime(d, "%Y-%m-%d")
@@ -106,8 +171,7 @@ def _archive():
         })
     with open(os.path.join(archive_root, "manifest.json"), "w", encoding="utf-8") as f:
         json.dump(manifest, f, ensure_ascii=False)
-
-    print(f"[아카이브] {date_iso} 저장 (보관 중 {len(dates)}일치)")
+    print(f"[아카이브] 보관 중 {len(dates)}일치")
 
 
 def _rebuild_dist_archive():
@@ -127,6 +191,8 @@ def run(archive: bool):
     _copy_us()
     if archive:
         _archive()
+    _ensure_us_archived()
+    _prune_and_manifest()
     _rebuild_dist_archive()
     print(f"[조립] 완료 → {config.OUT_DIR}/")
 
