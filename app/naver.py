@@ -206,16 +206,22 @@ def fetch_index_series(name, days=None):
 
 def fetch_index_investors():
     """
-    시장 전체의 개인·외국인·기관 순매수(억원).
-    확실한 공개 엔드포인트가 없어 여러 경로를 시도하고, 모두 실패하면 None을 돌려
-    화면에서 수급 칸을 감춥니다.
+    시장별 개인·외국인·기관 순매수(억원). {"KOSPI": {...}, "KOSDAQ": {...}}
+    시장 하나가 실패해도 나머지는 살리고, 전부 실패하면 빈 dict를 돌려
+    화면에서 수급 칸을 자동으로 감춥니다.
     """
     out = {}
-    try:
-        r = _get("https://finance.naver.com/sise/sise_index_investor.naver?code=KOSPI")
-        r.encoding = "euc-kr"
-        nums = re.findall(r'<td class="?number"?[^>]*>\s*([-\d,]+)\s*</td>', r.text)
-        print(f"[수급] KOSPI 페이지 숫자 {len(nums)}개 추출")
-    except Exception as e:
-        print(f"[수급] 조회 실패: {type(e).__name__}: {e}")
-    return out or None
+    for name in MARKETS:
+        try:
+            r = _get(f"https://m.stock.naver.com/api/index/{name}/integration")
+            d = (r.json() or {}).get("dealTrendInfo") or {}
+            personal = _num(d.get("personalValue"))
+            foreign = _num(d.get("foreignValue"))
+            institutional = _num(d.get("institutionalValue"))
+            if personal is None or foreign is None or institutional is None:
+                print(f"[수급] {name} 응답에 필요한 값이 없음: {d}")
+                continue
+            out[name] = {"개인": personal, "외국인": foreign, "기관": institutional}
+        except Exception as e:
+            print(f"[수급] {name} 실패: {type(e).__name__}: {e}")
+    return out

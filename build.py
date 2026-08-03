@@ -115,6 +115,13 @@ def main():
         if s.get("val"):
             market_value[s["mkt"]] = market_value.get(s["mkt"], 0) + s["val"]
 
+    try:
+        investors = naver.fetch_index_investors()
+    except Exception as e:
+        print(f"[수급] 조회 실패: {type(e).__name__}: {e}")
+        investors = {}
+    print(f"[수급] {len(investors)}개 시장 확보")
+
     indices = []
     for name in ("KOSPI", "KOSDAQ"):
         try:
@@ -127,7 +134,7 @@ def main():
         ix["series"] = naver.fetch_index_series(name)
         ix.pop("value", None)
         ix["value"] = eok(market_value.get(name))
-        ix["flow"] = None                      # 시장 전체 수급은 아직 미확보
+        ix["flow"] = investors.get(name)
         indices.append(ix)
     print(f"[지수] {len(indices)}개 수집")
 
