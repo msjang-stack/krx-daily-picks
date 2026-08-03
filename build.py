@@ -293,26 +293,42 @@ def main():
         print("[미국 시장] 실패, 국내 페이지만 배포합니다")
         traceback.print_exc()
 
-    n_days = sync_archive(date_iso, dt)
+    # 국내 장이 실제로 오늘 열렸는지 (평일이라도 국내만 쉬는 날엔 trade_day가
+    # 갱신되지 않아 today보다 과거로 남습니다). 이 값으로 이미 확정된 과거
+    # 아카이브가 미국 쪽 새 데이터에 덮어써지지 않도록 막습니다.
+    fresh = dt.date() == now.date()
+    if not fresh:
+        print(f"[빌드] 국내 장이 오늘({now:%Y-%m-%d}) 쉬어 마지막 거래일({date_iso}) 기준으로 만듭니다")
+
+    n_days = sync_archive(date_iso, dt, fresh)
     print(f"[아카이브] {date_iso} 저장 (보관 중 {n_days}일치)")
 
     print_summary(data, by_value, by_gain)
     return 0
 
 
-def sync_archive(date_iso: str, dt: datetime) -> int:
+def sync_archive(date_iso: str, dt: datetime, fresh: bool = True) -> int:
     """
     오늘자 dist/ 전체(페이지+차트)를 날짜별로 보관합니다.
     아카이브 본체는 cache/archive/ 에 두어 Actions 캐시로 매일 이어지고,
     이번 실행의 dist/archive/ 에는 전체 보관분을 복사해 그대로 배포합니다.
+
+    fresh=False(국내 장이 오늘 쉼)면 국내 데이터는 지난 거래일 것을 그대로 다시
+    쓴 것이라, 그 날짜로 이미 확정된 아카이브가 있으면 건드리지 않습니다.
+    (미국은 그새 실제로 새 거래일이 생겼을 수 있어, 그 값으로 과거 기록을
+    덮어쓰면 지난 날짜의 미국 시황이 다른 날 것으로 바뀌어 버립니다.)
+    실시간 배포본(dist/ 루트)은 이 판단과 무관하게 항상 최신으로 나갑니다.
     """
     archive_root = os.path.join(config.CACHE_DIR, "archive")
     os.makedirs(archive_root, exist_ok=True)
 
     today_dir = os.path.join(archive_root, date_iso)
-    if os.path.exists(today_dir):
-        shutil.rmtree(today_dir)
-    shutil.copytree(config.OUT_DIR, today_dir)
+    if fresh or not os.path.exists(today_dir):
+        if os.path.exists(today_dir):
+            shutil.rmtree(today_dir)
+        shutil.copytree(config.OUT_DIR, today_dir)
+    else:
+        print(f"[아카이브] {date_iso}는 이미 확정된 기록이라 건드리지 않습니다")
 
     # 폴더명(YYYY-MM-DD)에서 파싱한 날짜는 시간대 정보가 없어, dt도 naive로 맞춥니다.
     dt_naive = dt.replace(tzinfo=None) if dt.tzinfo else dt
