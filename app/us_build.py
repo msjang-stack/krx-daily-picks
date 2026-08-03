@@ -15,7 +15,7 @@ import re
 import time
 from datetime import datetime, timedelta, timezone
 
-from . import config, indicators, news, picks, yahoo
+from . import config, gics, indicators, news, picks, yahoo
 
 KST = timezone(timedelta(hours=9))
 
@@ -146,7 +146,7 @@ def run():
         s = sector_by_code.get(code)
         if not s:
             continue
-        parts = [p for p in (s.get("sector"), s.get("sub")) if p]
+        parts = [gics.translate(p) for p in (s.get("sector"), s.get("sub")) if p]
         yr = _founded_year(s.get("founded"))
         if yr:
             parts.append(f"{yr}년 설립")
