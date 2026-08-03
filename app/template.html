@@ -370,6 +370,8 @@
     margin-bottom: 12px;
     border-bottom: 1px solid var(--rule);
   }
+  .market-seg { margin: 18px 0 0; }
+  .market-seg .seg-btn { font-size: 16.5px; }
   .seg-btn {
     padding: 6px 1px 9px;
     font-family: inherit;
@@ -656,6 +658,11 @@
 
 <div class="wrap">
 
+  <div class="seg market-seg" role="tablist" aria-label="시장 구분" id="marketSeg">
+    <button class="seg-btn" role="tab" aria-selected="true" data-market="KR">국내 시장</button>
+    <button class="seg-btn" role="tab" aria-selected="false" data-market="US">미국 시장</button>
+  </div>
+
   <header class="masthead">
     <span class="eyebrow" id="eyebrow"></span>
     <h1 id="headline"></h1>
@@ -686,7 +693,7 @@
   <!-- 4. 주요 종목 -->
   <section>
     <div class="sec-head"><h2>주요 종목</h2></div>
-    <div class="seg" role="tablist" aria-label="시장 선택">
+    <div class="seg" role="tablist" aria-label="시장 선택" id="mktSeg">
       <button class="seg-btn" role="tab" aria-selected="true" data-mkt="KOSPI">코스피</button>
       <button class="seg-btn" role="tab" aria-selected="false" data-mkt="KOSDAQ">코스닥</button>
     </div>
@@ -717,15 +724,14 @@
 (function () {
   "use strict";
 
-  /* ===== 데이터는 build.py가 주입합니다 ===== */
-  var D = window.__DATA__ || {};
-  var INDICES = D.indices || [];
-  var NEWS = D.news || [];
-  var STOCKS = D.stocks || [];
-  var WATCH = D.watch || [];
-  var INFO = D.info || {};
-  var STOCK_NEWS = D.stockNews || {};
-  var CHARTS = D.charts || {};
+  /* ===== 데이터는 build.py가 주입합니다. 국내 시장은 페이지에 바로 담기고,
+     미국 시장은 탭을 처음 누를 때 us.json을 받아옵니다. ===== */
+  var KR_DATA = window.__DATA__ || {};
+  var US_DATA = null;   // 아직 못 받아왔으면 null
+  var D = KR_DATA, INDICES = [], NEWS = [], STOCKS = [], WATCH = [],
+      INFO = {}, STOCK_NEWS = {}, CHARTS = {};
+  var CUR = "KRW";       // 현재 탭의 통화. "KRW" 또는 "USD"
+  var MARKET = "KR";     // 현재 탭. "KR" 또는 "US"
 
   /* ===== 유틸 ===== */
 
@@ -738,6 +744,23 @@
   function eok(v) {
     if (v >= 10000) return (v / 10000).toFixed(1) + "조원";
     return won(v) + "억원";
+  }
+
+  // 미국 종목은 원(억원) 단위가 아니라 달러 원액으로 옵니다.
+  function usdBig(v) {
+    var a = Math.abs(v);
+    if (a >= 1e9) return "$" + (v / 1e9).toFixed(1) + "B";
+    if (a >= 1e6) return "$" + (v / 1e6).toFixed(1) + "M";
+    return "$" + Math.round(v).toLocaleString("en-US");
+  }
+
+  // 통화에 따라 가격·금액·수량 표기를 바꿉니다.
+  function fmtPrice(v) { return CUR === "USD" ? "$" + v.toFixed(2) : won(v) + "원"; }
+  function fmtMoney(v) { return CUR === "USD" ? usdBig(v) : eok(v); }
+  function fmtDiff(v) {
+    return CUR === "USD"
+      ? sign(v) + "$" + Math.abs(v).toFixed(2)
+      : sign(v) + won(Math.round(Math.abs(v))) + "원";
   }
 
   function el(tag, className, text) {
@@ -780,6 +803,7 @@
 
   function renderIndices() {
     var host = document.getElementById("indices");
+    host.innerHTML = "";
     INDICES.forEach(function (ix, k) {
       var card = el("div", "card index");
 
@@ -874,6 +898,7 @@
 
   function renderBriefing() {
     var host = document.getElementById("briefing");
+    host.innerHTML = "";
     var b = D.briefing || {};
     (b.lines || []).forEach(function (t) { host.appendChild(el("p", null, t)); });
 
@@ -901,6 +926,7 @@
 
   function renderNews() {
     var host = document.getElementById("news");
+    host.innerHTML = "";
     NEWS.forEach(function (n) {
       var a = el("a", "news-item");
       a.href = n.url || newsUrl(n.t);
@@ -929,13 +955,13 @@
     b.appendChild(nm);
 
     var right = el("div", null);
-    right.appendChild(el("div", "r-price num", won(s.p)));
+    right.appendChild(el("div", "r-price num", fmtPrice(s.p)));
     var c = el("div", "r-chg num " + cls(s.pct), arrow(s.pct) + " " + pct(s.pct));
     right.appendChild(c);
     b.appendChild(right);
 
     var note = el("div", "r-note");
-    note.innerHTML = '<span class="val num">거래대금 ' + eok(s.val) + '</span> · ' + s.note;
+    note.innerHTML = '<span class="val num">거래대금 ' + fmtMoney(s.val) + '</span> · ' + s.note;
     b.appendChild(note);
 
     b.addEventListener("click", function () { openSheet(s); });
@@ -957,6 +983,13 @@
 
   function renderWatch() {
     var host = document.getElementById("watch");
+    host.innerHTML = "";
+    if (!WATCH.length) {
+      var empty = el("p", "desc empty-news", "조건을 충족한 종목이 없습니다.");
+      empty.style.padding = "16px 17px";
+      host.appendChild(empty);
+      return;
+    }
     WATCH.forEach(function (w) {
       var card = el("button", "watch-card");
       card.type = "button";
@@ -969,7 +1002,7 @@
       top.appendChild(nm);
 
       var pr = el("div", "watch-price");
-      pr.appendChild(el("div", "p num", won(w.p)));
+      pr.appendChild(el("div", "p num", fmtPrice(w.p)));
       pr.appendChild(el("div", "c num " + cls(w.pct), arrow(w.pct) + " " + pct(w.pct)));
       top.appendChild(pr);
       card.appendChild(top);
@@ -1161,7 +1194,7 @@
       cross.setAttribute("opacity", 1);
       cdot.setAttribute("cx", x(i)); cdot.setAttribute("cy", y(closes[i]));
       cdot.setAttribute("opacity", 1);
-      tip.textContent = fmtDay(dates[i]) + "  " + won(closes[i]) + "원";
+      tip.textContent = fmtDay(dates[i]) + "  " + fmtPrice(closes[i]);
       tip.classList.add("on");
       var tw = tip.offsetWidth;
       var left = (x(i) / W) * rect.width - tw / 2;
@@ -1199,17 +1232,17 @@
     h.appendChild(el("span", "code num", s.c + " · " + s.mkt));
     sheet.appendChild(h);
 
-    sheet.appendChild(el("div", "sheet-price num", won(s.p) + "원"));
+    sheet.appendChild(el("div", "sheet-price num", fmtPrice(s.p)));
     sheet.appendChild(el("div", "sheet-chg num " + cls(s.pct), arrow(s.pct) + " " + pct(s.pct)));
 
     // 전일 종가 대비 실제 변동액, 거래대금에서 역산한 거래량
-    var diff = Math.round(s.p - s.p / (1 + s.pct / 100));
-    var vol = Math.round(s.val * 1e8 / s.p);
+    var diff = s.p - s.p / (1 + s.pct / 100);
+    var vol = CUR === "USD" ? Math.round(s.val / s.p) : Math.round(s.val * 1e8 / s.p);
 
     var g = el("dl", "stat-grid");
-    [["거래대금", eok(s.val)],
+    [["거래대금", fmtMoney(s.val)],
      ["거래량", won(vol) + "주"],
-     ["전일대비", sign(s.pct) + won(Math.abs(diff)) + "원"],
+     ["전일대비", fmtDiff(diff)],
      ["시장", s.mkt]]
       .forEach(function (x) {
         var d = el("div", "stat");
@@ -1348,21 +1381,83 @@
     });
   }
 
-  wire(".seg-btn", function (t) { view.mkt = t.dataset.mkt; });
+  wire("#mktSeg .seg-btn", function (t) { view.mkt = t.dataset.mkt; });
   wire(".tab", function (t) { view.mode = t.dataset.tab; });
+
+  /* ===== 시장(국내/미국) 전환 =====
+     국내 데이터는 페이지에 이미 담겨 있고, 미국 데이터는 탭을 처음 누를 때
+     us.json을 받아옵니다. 실패해도 국내 탭은 그대로 쓸 수 있어야 합니다. */
+
+  function renderAll(data, marketKey) {
+    D = data || {};
+    INDICES = D.indices || [];
+    NEWS = D.news || [];
+    STOCKS = D.stocks || [];
+    WATCH = D.watch || [];
+    INFO = D.info || {};
+    STOCK_NEWS = D.stockNews || {};
+    CHARTS = D.charts || {};
+    CUR = D.currency || "KRW";
+    MARKET = marketKey;
+
+    closeSheet();
+    closeResults();
+    q.value = "";
+
+    var mktSeg = document.getElementById("mktSeg");
+    if (marketKey === "US") {
+      mktSeg.style.display = "none";
+      view.mkt = "US";
+    } else {
+      mktSeg.style.display = "";
+      var segBtns = mktSeg.querySelectorAll(".seg-btn");
+      Array.prototype.forEach.call(segBtns, function (b, i) {
+        b.setAttribute("aria-selected", String(i === 0));
+      });
+      view.mkt = segBtns.length ? segBtns[0].dataset.mkt : "KOSPI";
+    }
+    view.mode = "value";
+    Array.prototype.forEach.call(document.querySelectorAll(".tabs .tab"), function (b, i) {
+      b.setAttribute("aria-selected", String(i === 0));
+    });
+
+    document.getElementById("eyebrow").textContent = (D.weekday || "") + " 장 마감";
+    document.getElementById("headline").textContent = (D.dateLabel || "") + " 마감 시황";
+    document.getElementById("idxNote").textContent = D.closeNote || "종가 기준";
+    document.title = (D.dateLabel || "") + " 마감 시황";
+
+    renderIndices();
+    renderBriefing();
+    renderNews();
+    renderRows();
+    renderWatch();
+  }
+
+  function switchMarket(key) {
+    Array.prototype.forEach.call(document.querySelectorAll("#marketSeg .seg-btn"), function (b) {
+      b.setAttribute("aria-selected", String(b.dataset.market === key));
+    });
+    if (key === MARKET) return;
+    if (key === "KR") { renderAll(KR_DATA, "KR"); return; }
+    if (US_DATA) { renderAll(US_DATA, "US"); return; }
+    document.getElementById("indices").innerHTML =
+      '<p class="desc empty-news" style="padding:14px 2px;">미국 시장 데이터를 불러오는 중입니다…</p>';
+    fetch("us.json")
+      .then(function (r) { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
+      .then(function (data) { US_DATA = data; renderAll(US_DATA, "US"); })
+      .catch(function () {
+        document.getElementById("indices").innerHTML =
+          '<p class="desc empty-news" style="padding:14px 2px;">미국 시장 데이터를 아직 준비하지 못했습니다.</p>';
+      });
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll("#marketSeg .seg-btn"), function (b) {
+    b.addEventListener("click", function () { switchMarket(b.dataset.market); });
+  });
 
   /* ===== 초기 렌더 ===== */
 
-  document.getElementById("eyebrow").textContent = (D.weekday || "") + " 장 마감";
-  document.getElementById("headline").textContent = (D.dateLabel || "") + " 마감 시황";
-  document.getElementById("idxNote").textContent = D.closeNote || "종가 기준";
-  document.title = (D.dateLabel || "") + " 마감 시황";
-
-  renderIndices();
-  renderBriefing();
-  renderNews();
-  renderRows();
-  renderWatch();
+  renderAll(KR_DATA, "KR");
 
   /* ===== 날짜 선택 =====
      아카이브 목록은 페이지가 만들어진 시점이 아니라 여는 시점에 받아오므로,

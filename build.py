@@ -10,10 +10,10 @@ import time
 import traceback
 from datetime import datetime, timedelta, timezone
 
-from app import config, dart, indicators, naver, news, picks
+from app import config, dart, indicators, naver, news, picks, us_build
 
 KST = timezone(timedelta(hours=9))
-WEEKDAY = ["월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일"]
+WEEKDAY = config.WEEKDAY
 
 
 def eok(v):
@@ -276,6 +276,15 @@ def main():
 
     kb = os.path.getsize(out) / 1024
     print(f"[완료] {out} ({kb:,.0f} KB) · {time.time() - started:.0f}초 소요")
+
+    # ---------- 미국 시장 ----------
+    # 국내 페이지와 별도 파일(dist/us.json)로 두어, "국내 시장" 탭만 볼 때는
+    # 받지 않게 합니다. 실패해도 국내 페이지는 그대로 나가야 합니다.
+    try:
+        us_build.run()
+    except Exception:
+        print("[미국 시장] 실패, 국내 페이지만 배포합니다")
+        traceback.print_exc()
 
     n_days = sync_archive(date_iso, dt)
     print(f"[아카이브] {date_iso} 저장 (보관 중 {n_days}일치)")

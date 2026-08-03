@@ -35,9 +35,11 @@ def _ago(dt):
     return f"{int(h // 24)}일 전"
 
 
-def _relevant(name, title, desc):
+def _relevant(name, title, desc, locale="ko"):
     """종목명이 제목이나 본문에 실제로 들어간 기사만 통과."""
     blob = f"{title} {desc}"
+    if locale == "en":
+        return name.lower() in blob.lower()
     if name in blob:
         return True
     # '삼성전자' → '삼성' 처럼 앞부분만 나오는 경우도 허용 (4자 이상일 때)
@@ -82,11 +84,12 @@ def _naver(query, want, days):
     return out
 
 
-# ---------------- 구글 뉴스 RSS (예비) ----------------
+# ---------------- 구글 뉴스 RSS (예비, 미국은 주 출처) ----------------
 
-def _google(query, want, days):
+def _google(query, want, days, locale="ko"):
     q = urllib.parse.quote(query)
-    url = f"https://news.google.com/rss/search?q={q}&hl=ko&gl=KR&ceid=KR:ko"
+    params = "hl=en-US&gl=US&ceid=US:en" if locale == "en" else "hl=ko&gl=KR&ceid=KR:ko"
+    url = f"https://news.google.com/rss/search?q={q}&{params}"
     r = S.get(url, timeout=20)
     if r.status_code != 200:
         return []
@@ -99,7 +102,7 @@ def _google(query, want, days):
         src = src_el.text if src_el is not None else ""
         if src and title.endswith(" - " + src):
             title = title[: -(len(src) + 3)]
-        if not _relevant(query, title, ""):
+        if not _relevant(query, title, "", locale=locale):
             continue
         try:
             pub = datetime.strptime(it.findtext("pubDate"), "%a, %d %b %Y %H:%M:%S %Z")
@@ -109,14 +112,20 @@ def _google(query, want, days):
         if pub and pub < cutoff:
             continue
         out.append({"t": title, "url": it.findtext("link") or "",
-                    "s": src or "구글뉴스", "w": _ago(pub)})
+                    "s": src or ("Google News" if locale == "en" else "구글뉴스"), "w": _ago(pub)})
         if len(out) >= want:
             break
     return out
 
 
-def fetch_for(name, want=3, days=3):
-    """한 종목의 최근 뉴스."""
+def fetch_for(name, want=3, days=3, locale="ko"):
+    """한 종목의 최근 뉴스. locale="en"이면 구글 뉴스(영문)만 씁니다 (네이버는 국내 전용)."""
+    if locale == "en":
+        try:
+            return _google(name, want, days, locale="en")
+        except Exception as e:
+            print(f"[뉴스] {name} 구글(EN) 실패: {type(e).__name__}: {e}")
+            return []
     try:
         got = _naver(name, want, days)
         if got:
@@ -130,12 +139,16 @@ def fetch_for(name, want=3, days=3):
         return []
 
 
-def fetch_market(want=5, days=1):
+def fetch_market(want=5, days=1, locale="ko"):
     """시장 전체 주요 뉴스."""
+    queries = ("S&P 500", "Wall Street", "stock market") if locale == "en" else ("코스피", "코스닥", "증시")
     items, seen = [], set()
-    for q in ("코스피", "코스닥", "증시"):
+    for q in queries:
         try:
-            got = _naver(q, want, days) or _google(q, want, days)
+            if locale == "en":
+                got = _google(q, want, days, locale="en")
+            else:
+                got = _naver(q, want, days) or _google(q, want, days)
         except Exception:
             got = []
         for a in got:

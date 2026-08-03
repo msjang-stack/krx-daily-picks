@@ -19,16 +19,26 @@ def _eok(v):
     return f"{eok:,.0f}억원"
 
 
-def score(m, snap):
+def _usd(v):
+    if v is None:
+        return ""
+    if v >= 1e9:
+        return f"${v / 1e9:,.1f}B"
+    return f"${v / 1e6:,.0f}M"
+
+
+def score(m, snap, currency="KRW"):
     """조건 충족 항목과 점수를 함께 돌려줍니다."""
     checks, pts = [], 0.0
+    fmt_val = _usd if currency == "USD" else _eok
+    fmt_px = (lambda v: f"${v:,.2f}") if currency == "USD" else (lambda v: f"{_won(v)}원")
 
     r = m.get("val_ratio")
     if r and r >= 2:
         pts += min(30, 10 * r ** 0.5)
         checks.append([
             f"거래대금이 20일 평균의 {r:.1f}배",
-            f"오늘 {_eok(m['close'] * (snap.get('vol') or 0))} · 평소 {_eok(m['avg_val20'])}",
+            f"오늘 {fmt_val(m['close'] * (snap.get('vol') or 0))} · 평소 {fmt_val(m['avg_val20'])}",
         ])
 
     if m["ma20"] and m["ma5"] and m["ma60"]:
@@ -39,21 +49,21 @@ def score(m, snap):
             pts += 12
             checks.append([
                 "20일 이동평균선 위에서 상승 전환",
-                f"20일선 {_won(m['ma20'])}원 · 종가 {_won(m['close'])}원",
+                f"20일선 {fmt_px(m['ma20'])} · 종가 {fmt_px(m['close'])}",
             ])
 
     if m.get("new_high"):
         pts += 18
         checks.append([
             "60일 최고가 경신",
-            f"이전 최고 {_won(m['prev_high60'])}원",
+            f"이전 최고 {fmt_px(m['prev_high60'])}",
         ])
     elif m.get("near_high") and m["near_high"] >= 0.97:
         pts += 10
         gap = (1 - m["near_high"]) * 100
         checks.append([
             f"60일 최고가에 {gap:.1f}% 근접",
-            f"최고 {_won(m['high60'])}원 · 종가 {_won(m['close'])}원",
+            f"최고 {fmt_px(m['high60'])} · 종가 {fmt_px(m['close'])}",
         ])
 
     if m.get("up_streak", 0) >= 3:
@@ -69,14 +79,16 @@ def score(m, snap):
     if rsi and rsi >= 75:
         pts -= (rsi - 75) * 1.2
         checks.append([f"RSI {rsi:.0f} — 과열 구간", "70을 넘으면 단기 과열 신호로 봅니다"])
-    pct = snap.get("pct") or 0
-    if pct >= 25:
-        pts -= 12
+    # 상하한가가 있는 한국 시장에서만 유효한 과열 신호입니다. 미국은 가격제한폭이 없습니다.
+    if currency == "KRW":
+        pct = snap.get("pct") or 0
+        if pct >= 25:
+            pts -= 12
 
     return pts, checks
 
 
-def pick(rows, metrics, limit=None):
+def pick(rows, metrics, limit=None, currency="KRW"):
     """
     rows: 유니버스 스냅샷 [{c,n,mkt,p,pct,vol,val,cap}]
     metrics: {코드: indicators.compute 결과}
@@ -87,7 +99,7 @@ def pick(rows, metrics, limit=None):
         m = metrics.get(s["c"])
         if not m or m["days"] < 40:
             continue
-        pts, checks = score(m, s)
+        pts, checks = score(m, s, currency=currency)
         # 근거가 2개 미만이면 '주목할 이유'라 부르기 어렵습니다.
         if len(checks) < 2 or pts <= 20:
             continue
