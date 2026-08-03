@@ -229,6 +229,12 @@
     outline: 2px solid var(--ink-2);
     outline-offset: 1px;
   }
+  .build-note {
+    margin-left: auto;
+    font-size: 11.5px;
+    color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
+  }
   .sample-flag {
     display: inline-flex;
     align-items: center;
@@ -669,6 +675,7 @@
     <div class="datebar">
       <label for="dateSelect" class="datebar-label">날짜</label>
       <select id="dateSelect"><option value="">오늘</option></select>
+      <span class="build-note" id="buildNote"></span>
     </div>
   </header>
 
@@ -1424,6 +1431,7 @@
     document.getElementById("eyebrow").textContent = (D.weekday || "") + " 장 마감";
     document.getElementById("headline").textContent = (D.dateLabel || "") + " 마감 시황";
     document.getElementById("idxNote").textContent = D.closeNote || "종가 기준";
+    document.getElementById("buildNote").textContent = D.builtAt ? "데이터 생성 " + D.builtAt : "";
     document.title = (D.dateLabel || "") + " 마감 시황";
 
     renderIndices();

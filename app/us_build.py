@@ -193,6 +193,7 @@ def run():
         "info": info,
         "stockNews": stock_news,
         "charts": inline,
+        "builtAt": datetime.now(KST).strftime("%Y-%m-%d %H:%M"),
     }
 
     with open(os.path.join(config.OUT_DIR, "us.json"), "w", encoding="utf-8") as f:
