@@ -12,6 +12,7 @@
 import json
 import os
 import re
+import shutil
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -169,7 +170,10 @@ def run():
         for s in group[: config.TOP_N * 2]:
             visible.add(s["c"])
 
-    us_dir = os.path.join(config.OUT_DIR, "us")
+    out_dir = config.US_CACHE_DIR
+    if os.path.exists(out_dir):
+        shutil.rmtree(out_dir)
+    us_dir = os.path.join(out_dir, "us")
     chart_dir = os.path.join(us_dir, "charts")
     os.makedirs(chart_dir, exist_ok=True)
     for code, c in charts.items():
@@ -196,8 +200,8 @@ def run():
         "builtAt": datetime.now(KST).strftime("%Y-%m-%d %H:%M"),
     }
 
-    with open(os.path.join(config.OUT_DIR, "us.json"), "w", encoding="utf-8") as f:
+    with open(os.path.join(out_dir, "us.json"), "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
 
-    kb = os.path.getsize(os.path.join(config.OUT_DIR, "us.json")) / 1024
+    kb = os.path.getsize(os.path.join(out_dir, "us.json")) / 1024
     print(f"[미국 시장] 완료: us.json ({kb:,.0f} KB) · {time.time() - started:.0f}초 소요")

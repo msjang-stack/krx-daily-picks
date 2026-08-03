@@ -1,4 +1,4 @@
-name: Refresh US market (morning)
+name: Build US market (morning)
 
 on:
   schedule:
@@ -18,7 +18,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  refresh:
+  build:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -35,14 +35,16 @@ jobs:
         uses: actions/cache@v4
         with:
           path: cache
-          # 오후 국내 빌드(daily.yml)가 이 캐시를 restore-keys로 이어받아, 방금
-          # 받아온 미국 데이터를 다시 받지 않고 재사용합니다 (build.py의
-          # reuse_morning_us_build 참고).
+          # 국내 빌드(daily.yml)가 남긴 cache/kr_latest/를 이어받아 assemble.py가
+          # 국내 페이지는 그대로 두고 미국 데이터만 새로 얹을 수 있게 합니다.
           key: krx-cache-morning-${{ github.run_id }}
           restore-keys: krx-cache-
 
-      - name: Refresh US data only
-        run: python us_morning.py
+      - name: Build US
+        run: python run_us.py
+
+      - name: Assemble (아카이브는 국내 빌드가 담당)
+        run: python assemble.py
 
       - name: Deploy to Cloudflare Pages
         if: env.CLOUDFLARE_API_TOKEN != ''
@@ -58,7 +60,7 @@ jobs:
           path: dist
 
   deploy:
-    needs: refresh
+    needs: build
     runs-on: ubuntu-latest
     environment:
       name: github-pages

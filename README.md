@@ -39,29 +39,36 @@
 `app/yahoo.py`)만 고치면 되도록 분리했습니다. 야후의 배치 시세·회사 개요 엔드포인트는
 인증(crumb)을 요구해 막혀 있어, 종목별 일별 시세 엔드포인트로 대신합니다.
 
-미국 장은 한국 시간 새벽에 마감하므로, 평일 16:40 KST 실행 시점에는 이미 그날 새벽에
-마감한 미국 시세가 확정돼 있습니다. 그래서 국내와 같은 한 번의 실행 안에서 미국 데이터도
-함께 만듭니다 (`build.py` → `app/us_build.py`).
+국내와 미국은 마감 시각도, 크론도, 코드도 서로 완전히 독립적입니다.
 
-다만 그렇게만 하면 미국 장이 끝난(새벽 5~6시) 뒤부터 국내 빌드가 도는 16:40까지
-10시간 넘게 미국 탭이 전날 것으로 멈춰 있게 됩니다. 그래서 미국 장 마감 직후인
-07:00 KST에 **미국 데이터만** 한 번 더 새로 만드는 워크플로(`us_morning.py`,
-`.github/workflows/us-morning.yml`)를 따로 둡니다. 국내 페이지는 캐시에 저장된
-어제(마지막 거래일) 것을 그대로 복원해 건드리지 않고, `dist/us.json`과
-`dist/us/charts/`만 새로 만들어 배포합니다. 이때는 그날 아카이브에 정식으로
-반영하지 않습니다 — 국내 쪽의 "오늘"이 아직 실제로 오지 않았기 때문입니다
-(오후 16:40에 국내 빌드가 돌 때 그날치로 정식 아카이브됩니다).
+- **국내 (`app/kr_build.py`)**: 평일 16:40 KST — 코스피·코스닥 마감 직후. 결과를
+  `cache/kr_latest/`에 씁니다.
+- **미국 (`app/us_build.py`)**: 평일 07:00 KST — 미국 장은 서머타임에 따라 한국시간
+  05~06시에 끝나므로 그보다 충분히 뒤입니다. 결과를 `cache/us_latest/`에 씁니다.
+
+두 모듈 다 서로를 import하지 않고, 서로의 존재를 모릅니다. 실제 배포 화면(`dist/`)은
+`assemble.py` 하나가 두 캐시를 그대로 갖다 붙여서 만듭니다 — 국내·미국 중 하나가
+아직 없거나 실패해도 있는 쪽만 나갑니다. GitHub Pages·Cloudflare Pages는 배포할 때마다
+사이트 전체를 통째로 새로 올리는 방식이라(부분 갱신이 안 됨), 두 워크플로 모두
+"자기 시장만 새로 받고 → assemble.py로 dist/ 전체를 다시 조립해서 → 통째로 배포"하는
+같은 절차를 따릅니다. `assemble.py --archive`(국내 워크플로 전용)만 그날치를 날짜별
+아카이브에 정식으로 남기고, 미국 쪽 아침 갱신은 아카이브를 건드리지 않습니다 — 그날의
+국내 장이 아직 실제로 열리지 않았기 때문입니다 (오후 국내 빌드 때 그날치로 정식
+아카이브됩니다).
 
 ## 실행
 
 ```bash
 pip install -r requirements.txt
-python build.py          # dist/index.html + dist/us.json 생성
-python us_morning.py     # (참고) 국내 페이지는 캐시 것을 복원하고 dist/us.json만 새로 만듦
+python run_kr.py     # cache/kr_latest/ 생성 (국내만)
+python run_us.py     # cache/us_latest/ 생성 (미국만)
+python assemble.py --archive   # 위 둘을 dist/로 합치고 오늘자 아카이브에 기록
+# 또는 로컬에서 한 번에:
+python build.py      # run_kr + run_us + assemble --archive
 ```
 
-자동 실행은 평일 16:40 KST(`.github/workflows/daily.yml`, 국내+미국 전체)와
-평일 07:00 KST(`.github/workflows/us-morning.yml`, 미국만)이며, `daily.yml`은
+자동 실행은 평일 16:40 KST(`.github/workflows/daily.yml`, 국내)와
+평일 07:00 KST(`.github/workflows/us-morning.yml`, 미국)이며, `daily.yml`은
 Actions 탭에서 수동 실행 시 차트를 준비할 종목 수를 지정할 수 있습니다.
 
 ## 설정 (환경변수)
@@ -78,9 +85,12 @@ Actions 탭에서 수동 실행 시 차트를 준비할 종목 수를 지정할 
 ## 구성
 
 ```
-build.py              국내 수집 → 계산 → dist/index.html 생성 (마지막에 app/us_build.run() 호출)
-us_morning.py          (07:00 KST 전용) 어제 사이트를 복원하고 미국 데이터만 새로 만듦
-app/us_build.py        미국 수집 → 계산 → dist/us.json 생성 (탭을 눌러야 내려받음)
+run_kr.py             국내 빌드 실행 (daily.yml 전용 진입점)
+run_us.py             미국 빌드 실행 (us-morning.yml 전용 진입점)
+assemble.py           국내·미국 캐시를 dist/로 합침 — 둘을 동시에 아는 유일한 파일
+build.py              로컬에서 국내+미국을 한 번에 만들어보는 편의용 (배포에는 안 씀)
+app/kr_build.py       국내 수집 → 계산 → cache/kr_latest/ 생성. 미국을 전혀 모름
+app/us_build.py       미국 수집 → 계산 → cache/us_latest/ 생성. 국내를 전혀 모름
 app/naver.py          네이버 금융 수집 (국내 시세·지수·일별시세)
 app/yahoo.py          야후 파이낸스 수집 (미국 시세·지수·일별시세) + S&P500 목록
 app/news.py           뉴스 수집. locale="ko"면 네이버 API → 구글 RSS, "en"이면 구글 RSS(영문)

@@ -27,6 +27,11 @@ NEWS_STOCKS = _int("NEWS_STOCKS", 24)
 OUT_DIR = os.environ.get("OUT_DIR", "dist")
 CACHE_DIR = os.environ.get("CACHE_DIR", "cache")
 
+# 국내·미국 빌드는 서로를 몰라도 되도록 각자 자기 결과물을 여기 자기 자리에만
+# 씁니다. assemble.py가 이 둘을 모아 OUT_DIR로 합칩니다.
+KR_CACHE_DIR = os.path.join(CACHE_DIR, "kr_latest")
+US_CACHE_DIR = os.path.join(CACHE_DIR, "us_latest")
+
 # 유니버스 필터
 MIN_PRICE = _int("MIN_PRICE", 1000)
 MIN_VALUE = _int("MIN_VALUE", 1_000_000_000)        # 당일 거래대금 하한(원)

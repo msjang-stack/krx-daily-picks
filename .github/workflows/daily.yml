@@ -1,4 +1,4 @@
-name: Build daily page
+name: Build KR page
 
 on:
   schedule:
@@ -43,13 +43,16 @@ jobs:
           key: krx-cache-${{ github.run_id }}
           restore-keys: krx-cache-
 
-      - name: Build
+      - name: Build KR
         env:
           NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
           NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
           DART_API_KEY: ${{ secrets.DART_API_KEY }}
           CHART_LIMIT: ${{ github.event.inputs.chart_limit || '1200' }}
-        run: python build.py
+        run: python run_kr.py
+
+      - name: Assemble + archive
+        run: python assemble.py --archive
 
       - name: Deploy to Cloudflare Pages
         if: env.CLOUDFLARE_API_TOKEN != ''
